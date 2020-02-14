@@ -7,7 +7,6 @@ const assert = require('assert')
 const { fork } = require('child_process')
 var keepAliveAgent = new http.Agent({ keepAlive: true})
 
-
 const agregar = async (dna) => 
     new Promise((resolve,reject) => {
         var payload = JSON.stringify(dna)
@@ -20,7 +19,7 @@ const agregar = async (dna) =>
                 'Content-Type': 'text/json',
                 'Content-Length': Buffer.byteLength(payload)
             }}, resolve)
-        req.on('error', (e) => {
+        req.once('error', (e) => {
             reject(e)
         })
         req.write(payload)
@@ -36,14 +35,14 @@ const leer = async () =>
             port: port,
             agent: keepAliveAgent
         }, res => {
-                res.on('data', (chunk) => {
+                res.once('data', (chunk) => {
                     body.push(chunk);
-                }).on('end', () => {  
+                }).once('end', () => {  
                     var count = JSON.parse(body)
                     resolve(count)
                 });
             })
-        req.on('error', (e) => {
+        req.once('error', (e) => {
             reject(e)
         })
         req.end()
@@ -129,10 +128,14 @@ dbPromise.then(async db => {
     server.once('message', async code => {
         console.log('server up')
         try {
+            console.log('running correctness test')
             await testCorrect()
             console.log('correctness test ok')
+            console.log('running stress test')
+
             await testStress().catch(e => {})
             console.log('stress test ok')
+
             db.close()
             server.kill()
         }
@@ -143,6 +146,9 @@ dbPromise.then(async db => {
         }
     })
 })
+
+const sleep = async (time) => new Promise((resolve, reject) => setTimeout(resolve, time))
+
 
 const testCorrect = async () => {
     const readers = 1
@@ -156,28 +162,26 @@ const testCorrect = async () => {
         return accum
     }, [])
 
+    await sleep(1000)
+
     for(let i=0; i<readers; i++) {
         pending.push(leer())
     }
     pending = await pending.reduce(async (accum, task) => 
     {   
-        await task
+        var count = await task
+        assert.strictEqual(count.ratio, 0.8)
         return accum
     }, [])
 }
 
 const testStress = async () => {
-    const readers = 30000
+    const readers = 10000
     const writers = 1
     var pending = []
     for(let i=0; i<writers; i++) {
         pending.push(agregar({dna: ejemplos[i % ejemplos.length]}))
     }
-    pending = await pending.reduce(async (accum, task) => {
-        await task
-        return accum
-    }, [])
-
     for(let i=0; i<readers; i++) {
         pending.push(leer())
     }
