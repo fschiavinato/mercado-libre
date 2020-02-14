@@ -150,7 +150,8 @@ server.start = async () => {
     }
 }
 
-server.port = 8080
+server.port = process.env.PORT || 3000
+server.host = '0.0.0.0'
 
 exports.default = server
 
