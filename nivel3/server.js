@@ -1,8 +1,7 @@
 const http = require('http');
-const isMutant = require('./nivel1.js').isMutant
+const isMutant = require('../nivel1.js').isMutant
 const sqlite = require('sqlite')
 const numCPUs = require('os').cpus().length;
-// const numCPUs = 1
 const cluster = require('cluster');
 const dbName = './database.sqlite'
 
@@ -12,9 +11,7 @@ var cache = {
     lock: false
 }
 
-var server = {}
-
-const requestListener = (async (req, res) => {
+var server = http.createServer(async (req, res) => {
     if(req.url ==='/mutant/' && req.method === 'POST') {
         let body = []
         req.on('data', (chunk) => {
@@ -96,6 +93,7 @@ server.start = async () => {
                 process.send(msg)
             });
         }
+        console.log(`Worker ${process.pid} started`);
       
         cluster.on('exit', (worker, code, signal) => {
             if (signal) {
@@ -107,9 +105,9 @@ server.start = async () => {
             }
         });
       } else {
-        http.createServer(requestListener).listen(server.port, server.host, async () => {
-            console.log(`Worker ${process.pid} started`);
-            process.send('ready')
+        console.log(`Worker ${process.pid} started`);
+        server.listen(server.port, server.host, async () => {
+            process.send('listening')
         })
       }
 }

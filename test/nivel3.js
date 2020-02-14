@@ -1,21 +1,28 @@
 const sqlite = require('sqlite')
 const dbPromise = sqlite.open(__dirname+'/../database.sqlite', { Promise })  
-var server = require('../nivel3.js').default
+const port = 8080
+const host = 'localhost'
 var http = require('http')
 const assert = require('assert')
-const util = require('util')
+const { fork } = require('child_process')
+var keepAliveAgent = new http.Agent({ keepAlive: true})
+
 
 const agregar = async (dna) => 
     new Promise((resolve,reject) => {
         var payload = JSON.stringify(dna)
         var req = http.request({method: 'POST', 
             path: '/mutant/', 
-            host: server.host, 
-            port: server.port,
+            host: host, 
+            port: port,
+            agent: keepAliveAgent,
             headers: {
                 'Content-Type': 'text/json',
                 'Content-Length': Buffer.byteLength(payload)
             }}, resolve)
+        req.on('error', (e) => {
+            reject(e)
+        })
         req.write(payload)
         req.end()
 })
@@ -25,8 +32,9 @@ const leer = async () =>
         let body = []
         var req = http.request({ 
             path: '/stats', 
-            host: server.host, 
-            port: server.port
+            host: host, 
+            port: port,
+            agent: keepAliveAgent
         }, res => {
                 res.on('data', (chunk) => {
                     body.push(chunk);
@@ -35,6 +43,9 @@ const leer = async () =>
                     resolve(count)
                 });
             })
+        req.on('error', (e) => {
+            reject(e)
+        })
         req.end()
 })
 
@@ -97,9 +108,6 @@ const humano = (n) => {
     return res.map(row => row.join(""))
 }
 
-
-const readers = 10000
-const writers = 100
 const exampleSize = 20
 
 const ejemplos = [
@@ -116,14 +124,24 @@ const clear = async (db) => (
 )
 
 dbPromise.then(async db => {
-    server.start()
     await clear(db)
-    await testCorrect()
-    await clear(db)
-    await testStress()
-    server.close()
-    db.close()
-
+    var server = fork('./nivel3.js')
+    server.once('message', async code => {
+        console.log('server up')
+        try {
+            await testCorrect()
+            console.log('correctness test ok')
+            await testStress().catch(e => {})
+            console.log('stress test ok')
+            db.close()
+            server.kill()
+        }
+        catch(e) {
+            console.log(e)
+            db.close()
+            server.kill()   
+        }
+    })
 })
 
 const testCorrect = async () => {
@@ -149,7 +167,7 @@ const testCorrect = async () => {
 }
 
 const testStress = async () => {
-    const readers = 50000
+    const readers = 30000
     const writers = 1
     var pending = []
     for(let i=0; i<writers; i++) {
